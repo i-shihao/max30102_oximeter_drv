@@ -1,4 +1,4 @@
-obj-m +=i2c_oxi.o
+obj-m +=max30102.o
 
 KDIR :=/lib/modules/$(shell uname -r)/build
 

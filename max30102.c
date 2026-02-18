@@ -29,8 +29,8 @@
 
 #define REG_FIFO_CONFIG				0x08
 #define REG_FIFO_CONFIG_SMP_4AVE		0x2
-#define REG_FIFO_CONFIG_SM_AVE_SHIFT		5
-
+#define REG_FIFO_CONFIG_SMP_AVE_SHIFT		5
+#define REG_FIFO_CONFIG_SMP_AVE_MASK		GENMASK(7,4)
 #define REG_FIFO_CONFIG_ROLLOVER_EN		BIT(4)
 #define REG_FIFO_CONFIG_FIFO_A_FULL		GENMASK(3,0)
 #define REG_FIFO_CONFIG_FIFO_A_FULL_SHIFT	0
@@ -82,6 +82,7 @@ static int max30102_probe(struct i2c_client *client)
 {
 	struct max30102_data md;
 	struct device *dev = &client->dev;
+	unsigned int reg;
 	md = devm_kzalloc(dev,sizeof(md), GFP_KERNEL);
 
 	if (!md)
@@ -92,11 +93,13 @@ static int max30102_probe(struct i2c_client *client)
 	if(IS_ERR(md->regmap))
 		return  PTR_ERR(map);
 
-	/* Clip verification */
+	/* check part ID */
 	int val;
-	ret = regmap_read(md->map,REG_PART_ID,&val);
+	ret = regmap_read(md->map,REG_PART_ID,&reg);
 
 	if (ret < 0)
+		return -ENODEV;
+	if (reg != REG_PART_ID)
 		return -ENODEV;
 
 	pr_info("Driver initialized\n");

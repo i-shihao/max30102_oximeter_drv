@@ -140,7 +140,9 @@ static int max30102_probe(struct i2c_client *client)
 
 static void max30102_remove(struct i2c_client *client)
 {
-	pr_info("Driver removed\n");
+	struct device *dev = &client->dev;
+	
+	dev_info(dev, "Driver removed\n");
 	return;
 }
 
@@ -150,8 +152,14 @@ static void max30102_shutdown(struct i2c_client *client)
 	return;
 }
 
+static const struct of_device_id max30102_of_match[] = {
+    { .compatible = "adi,max30102" },
+    { }
+};
+MODULE_DEVICE_TABLE(of, max30102_of_match);
+
 static const struct i2c_device_id max30102_idtable[] = {
-	{ "adi, max30102"},
+	{ "adi,max30102"},
 	{ }
 };
 
@@ -160,7 +168,8 @@ MODULE_DEVICE_TABLE(i2c, max30102_idtable);
 static struct i2c_driver max30102_driver = {
 	.driver = {
 		.name = "max30102",
-		.pm = NULL
+		.pm = NULL,
+		.of_match_table = max30102_of_match,
 	},
 	.id_table = max30102_idtable ,
 	.probe = max30102_probe ,

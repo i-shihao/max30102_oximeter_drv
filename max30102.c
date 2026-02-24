@@ -10,6 +10,8 @@
 #include <linux/init.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
+#include <linux/iio.h>
+#include <linux/iio/init.h>
 
 /* Register info */
 #define REG_INT_STATUS1				0x00
@@ -21,8 +23,8 @@
 #define REG_INT_STATUS2_DIE_TEMP_RDY		BIT(1)
 #define REG_INT_ENABLE1				0x02
 #define REG_INT_ENABLE1_A_FULL			BIT(7)
-#define REG_INT_ENABLE1_PPG_RDY_EN			BIT(6)
-#define REG_INT_ENABLE1_ALC_OVF_EN			BIT(5)
+#define REG_INT_ENABLE1_PPG_RDY_EN		BIT(6)
+#define REG_INT_ENABLE1_ALC_OVF_EN		BIT(5)
 #define REG_INT_ENABLE2				0x03
 #define REG_INT_ENABLE2_DIE_TEMP_RDY_EN		BIT(1)
 #define REG_FIFO_WR_PTR				0x04
@@ -61,9 +63,41 @@
 #define REG_REV_ID				0xFE
 #define REG_PART_ID				0xFF
 
+
+#define MAX30102_INTENSITY_CHANNELS(_si,_mod) {\
+	.type = IIO_INTENSITY,\
+	.channel2 = _mod,\
+	.modified = 1,\
+	.scan_index = _si,\
+	.scan_type = { \
+		.sign = 'u',\
+		.shift = 8, \
+		.realbits = 18,\
+		.storagebits = 32,\
+		.endianness = IIO_BE,\
+	},\
+}\
+
 struct max30102_data {
 	struct regmap *regmap;
 }
+
+enum max30102_sc = {
+	MAX_LED_RED;
+	MAX_LED_ID;
+};
+
+static const unsigned long max30102_scan_masks[] = {
+	BIT(MAX_LED_RED) | BIT(MAX_LED_IR),
+	0
+};
+
+static const struct iio_chan_spec max30102_channels[] = {
+	MAX30102_INTENSITY_CHANNELS(MAX_LED_RED,IIO_MODE_LIGHT_RED),
+	MAX30102_INTENSITY_CHANNELS(MAX_LED_IR, IIO_MODE_LIGHT_IR),
+
+};
+
 
 static const struct regmap_config max30102_regmap_config = {
 	.reg_bits = 8,
@@ -83,6 +117,9 @@ static int max30102_probe(struct i2c_client *client)
 	if (!md)
 		return -ENOMEM;
 
+	/* iio inteface configurations */
+
+	sd->indio_dev = 
 	md->regmap = devm_regmap_init_i2c(client, &max30102_regmap_config);
 
 	if(IS_ERR(md->regmap))

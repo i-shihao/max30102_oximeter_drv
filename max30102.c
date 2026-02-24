@@ -1,3 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+
+/*
+ * Max30102 SPO2 oximetry driver 
+ * Copyright (C) 2026 Shi Hao <i.shihao.999@gmail.com>
+*/
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -5,7 +12,6 @@
 #include <linux/regmap.h>
 
 /* Register info */
-
 #define INT_STATUS1				0x00
 #define INT_STATUS1_A_FULL			BIT(7)
 #define INT_STATUS1_PPG_RDY			BIT(6)
@@ -13,20 +19,16 @@
 #define INT_STATUS1_PWR_RDY			BIT(0)
 #define INT_STATUS2				0x01
 #define INT_STATUS2_DIE_TEMP_RDY		BIT(1)
-
 #define INT_ENABLE1				0x02
 #define INT_ENABLE1_A_FULL			BIT(7)
 #define INT_ENABLE1_PPG_RDY_EN			BIT(6)
 #define INT_ENABLE1_ALC_OVF_EN			BIT(5)
-
 #define INT_ENABLE2				0x03
 #define INT_ENABLE2_DIE_TEMP_RDY_EN		BIT(1)
-
 #define REG_FIFO_WR_PTR				0x04
 #define REG_FIFO_OVF_COUNTER			0x05
 #define REG_FIFO_RD_PTR				0x06
 #define REG_FIFO_DATA_REG			0x07
-
 #define REG_FIFO_CONFIG				0x08
 #define REG_FIFO_CONFIG_SMP_4AVE		0x2
 #define REG_FIFO_CONFIG_SMP_AVE_SHIFT		5
@@ -34,17 +36,13 @@
 #define REG_FIFO_CONFIG_ROLLOVER_EN		BIT(4)
 #define REG_FIFO_CONFIG_FIFO_A_FULL		GENMASK(3,0)
 #define REG_FIFO_CONFIG_FIFO_A_FULL_SHIFT	0
-
-
 #define REG_MODE_CONFIG				0x09
 #define REG_MODE_CONFIG_SHDN			BIT(7)
 #define REG_MODE_CONFIG_RESET			BIT(6)
-
 #define REG_MODE_MASK				GENMASK(2,0)
 #define MODE_HR					0x02
 #define MODE_SPO2				0x03
 #define MODE_MULTI				0x07
-
 #define REG_SPO2_CONFIG				0x0A
 #define REG_SPO2_CONFIG_ADC_RGE_4096		(0x1 << 5)
 #define REG_SPO2_CONFIG_SAMPLE_RATE		0x03
@@ -52,17 +50,14 @@
 #define REG_SPO2_CONFIG_SR_SHIFT		2
 #define REG_SPO2_LED_PW				0x03
 #define REG_SPO2_LED_PW_SHIFT			0
-
 #define REG_LED1_PA				0x0C	/* RED */
 #define REG_LED2_PA				0x0D	/* IR */
 #define REG_LED1_DEF_PA				0x1f
 #define REG_LED2_DEF_PA				0x1f
-
 #define REG_TINT				0x1F
 #define REG_TFRAC				0x20
 #define REG_TEMP_CONFIG				0x21
 #define REG_TEMP_CONFIG_EN			BIT(0)
-
 #define REG_REV_ID				0xFE
 #define REG_PART_ID				0xFF
 

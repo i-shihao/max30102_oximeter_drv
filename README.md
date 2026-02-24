@@ -13,3 +13,7 @@
 
 ## Overview
 
+    A max30102 spo2 heatrate oximeter sensor driver based on Linux i2c subsystem.
+    Developed and tested on ARM-based platfroms such as Raspberry Pi 4 Model B.
+    Exposes sensor data through Linux iio intefaces. Designed and developed for
+    learning linux kernel device driver development.

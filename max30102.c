@@ -12,19 +12,19 @@
 #include <linux/regmap.h>
 
 /* Register info */
-#define INT_STATUS1				0x00
-#define INT_STATUS1_A_FULL			BIT(7)
-#define INT_STATUS1_PPG_RDY			BIT(6)
-#define INT_STATUS1_ALC_OVF			BIT(5)
-#define INT_STATUS1_PWR_RDY			BIT(0)
-#define INT_STATUS2				0x01
-#define INT_STATUS2_DIE_TEMP_RDY		BIT(1)
-#define INT_ENABLE1				0x02
-#define INT_ENABLE1_A_FULL			BIT(7)
-#define INT_ENABLE1_PPG_RDY_EN			BIT(6)
-#define INT_ENABLE1_ALC_OVF_EN			BIT(5)
-#define INT_ENABLE2				0x03
-#define INT_ENABLE2_DIE_TEMP_RDY_EN		BIT(1)
+#define REG_INT_STATUS1				0x00
+#define REG_INT_STATUS1_A_FULL			BIT(7)
+#define REG_INT_STATUS1_PPG_RDY			BIT(6)
+#define REG_INT_STATUS1_ALC_OVF			BIT(5)
+#define REG_INT_STATUS1_PWR_RDY			BIT(0)
+#define REG_INT_STATUS2				0x01
+#define REG_INT_STATUS2_DIE_TEMP_RDY		BIT(1)
+#define REG_INT_ENABLE1				0x02
+#define REG_INT_ENABLE1_A_FULL			BIT(7)
+#define REG_INT_ENABLE1_PPG_RDY_EN			BIT(6)
+#define REG_INT_ENABLE1_ALC_OVF_EN			BIT(5)
+#define REG_INT_ENABLE2				0x03
+#define REG_INT_ENABLE2_DIE_TEMP_RDY_EN		BIT(1)
 #define REG_FIFO_WR_PTR				0x04
 #define REG_FIFO_OVF_COUNTER			0x05
 #define REG_FIFO_RD_PTR				0x06
@@ -54,7 +54,7 @@
 #define REG_LED2_PA				0x0D	/* IR */
 #define REG_LED1_DEF_PA				0x1f
 #define REG_LED2_DEF_PA				0x1f
-#define REG_TINT				0x1F
+#define REG_TREG_INT				0x1F
 #define REG_TFRAC				0x20
 #define REG_TEMP_CONFIG				0x21
 #define REG_TEMP_CONFIG_EN			BIT(0)

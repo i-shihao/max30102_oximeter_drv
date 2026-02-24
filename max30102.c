@@ -10,10 +10,9 @@
 #include <linux/init.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
-#include <linux/iio.h>
-#include <linux/iio/init.h>
-
-/* Register info */
+#include <linux/iio/iio.h>
+#include <linux/iio/kfifo_buf.h>
+#include <linux/iio/buffer.h>
 #define REG_INT_STATUS1				0x00
 #define REG_INT_STATUS1_A_FULL			BIT(7)
 #define REG_INT_STATUS1_PPG_RDY			BIT(6)
@@ -80,11 +79,21 @@
 
 struct max30102_data {
 	struct regmap *regmap;
-}
+	struct iio_dev *indio_dev;
+        struct work_struct wq;
+        struct delayed_work work;
+        struct gpio_desc *led_gpio;
+        struct device *dev;
+        bool device_state;
+        int value;
+        int count;
+        int irq;
 
-enum max30102_sc = {
-	MAX_LED_RED;
-	MAX_LED_ID;
+};
+
+enum max30102_leds  {
+	MAX_LED_RED,
+	MAX_LED_IR,
 };
 
 static const unsigned long max30102_scan_masks[] = {
@@ -93,8 +102,8 @@ static const unsigned long max30102_scan_masks[] = {
 };
 
 static const struct iio_chan_spec max30102_channels[] = {
-	MAX30102_INTENSITY_CHANNELS(MAX_LED_RED,IIO_MODE_LIGHT_RED),
-	MAX30102_INTENSITY_CHANNELS(MAX_LED_IR, IIO_MODE_LIGHT_IR),
+	MAX30102_INTENSITY_CHANNELS(MAX_LED_RED,IIO_MOD_LIGHT_RED),
+	MAX30102_INTENSITY_CHANNELS(MAX_LED_IR, IIO_MOD_LIGHT_IR),
 
 };
 
@@ -103,38 +112,88 @@ static const struct regmap_config max30102_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
 	.max_register = 0xFF,
-	cache_type = REGCACHE_RBTREE,
 };
 
+static int max30102_read_raw(struct iio_dev *indio_dev, struct iio_chan_spec const *chan, int *val , int *val2, long mask)
+{
+        return 0;
+}
+
+static const struct iio_info max30102_iio_info = {
+        .read_raw = max30102_read_raw,
+};
+
+int max30102_chip_init(struct max30102_data *md) {
+
+	/* TODO chip initialization */
+
+	return 0;
+}
 
 static int max30102_probe(struct i2c_client *client)
 {
-	struct max30102_data md;
+	struct max30102_data *md;
 	struct device *dev = &client->dev;
 	unsigned int reg;
+	int ret;
 	md = devm_kzalloc(dev,sizeof(md), GFP_KERNEL);
 
 	if (!md)
 		return -ENOMEM;
 
 	/* iio inteface configurations */
+	md->indio_dev = devm_iio_device_alloc(dev, sizeof(struct max30102_data));
 
-	sd->indio_dev = 
+	if (!md->indio_dev) {
+		dev_err(dev, "iio_device_alloc() error\n");
+		return -ENOMEM;
+	}
+
+	md->indio_dev->info = &max30102_iio_info;
+        md->indio_dev->channels = max30102_channels;
+        md->indio_dev->num_channels = ARRAY_SIZE(max30102_channels);
+        md->indio_dev->name  = "smd1306";
+        md->indio_dev->available_scan_masks = max30102_scan_masks;
+        md->indio_dev->modes  = INDIO_DIRECT_MODE | INDIO_BUFFER_SOFTWARE;
+
+        ret = devm_iio_kfifo_buffer_setup(dev, md->indio_dev, NULL);
+
+        if(ret < 0) {
+                dev_err(dev,"iio_kfifo_buffer_setup() error\n");
+                return -ret;
+        }
+
+        ret = devm_iio_device_register(dev, md->indio_dev);
+
+        if (ret < 0 ) {
+                dev_err(dev,"iio_device_register() error\n");
+                return -ENODEV;
+        }
+
+        dev_info(dev, "iio registered\n");
+
+	/* regmap configurations */
+	
 	md->regmap = devm_regmap_init_i2c(client, &max30102_regmap_config);
-
 	if(IS_ERR(md->regmap))
-		return  PTR_ERR(map);
+		return  PTR_ERR(md->regmap);
 
 	/* check part ID */
-	int val;
-	ret = regmap_read(md->map,REG_PART_ID,&reg);
+	reg = regmap_read(md->regmap,REG_PART_ID,&reg);
 
-	if (ret < 0)
+	if (reg < 0)
 		return -ENODEV;
 	if (reg != REG_PART_ID)
 		return -ENODEV;
 
-	pr_info("Driver initialized\n");
+	ret = max30102_chip_init(md);
+	
+	if (ret < 0) {
+		dev_err(dev, "max30102_chip_init() error\n");
+		return ret;
+	}
+
+	pr_info("device ready\n");
 	return 0;
 }
 
@@ -142,7 +201,7 @@ static void max30102_remove(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	
-	dev_info(dev, "Driver removed\n");
+	dev_info(dev, "device removed\n");
 	return;
 }
 
@@ -174,7 +233,7 @@ static struct i2c_driver max30102_driver = {
 	.id_table = max30102_idtable ,
 	.probe = max30102_probe ,
 	.remove = max30102_remove,
-	.shutdown = NULL
+	.shutdown = max30102_shutdown,
 };
 
 static int __init max30102_init(void)

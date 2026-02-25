@@ -22,35 +22,64 @@
 #define REG_INT_STATUS2_DIE_TEMP_RDY		BIT(1)
 #define REG_INT_ENABLE1				0x02
 #define REG_INT_ENABLE1_A_FULL			BIT(7)
+#define REG_INT_EN1_A_FULL_SHIFT		6
 #define REG_INT_ENABLE1_PPG_RDY_EN		BIT(6)
+#define REG_INT_EN1_PPG_RDY_SHIFT		5
 #define REG_INT_ENABLE1_ALC_OVF_EN		BIT(5)
+#define REG_INT_EN1_ALC_OVF_SHIFT		4
+#define REG_INT_ENABLE1_MASKS \
+(REG_INT_ENABLE1_A_FULL \
+| REG_INT_ENABLE1_PPG_RDY_EN  \
+REG_INT_ENABLE1_ALC_OVF_EN)
 #define REG_INT_ENABLE2				0x03
 #define REG_INT_ENABLE2_DIE_TEMP_RDY_EN		BIT(1)
+#define REG_INT_EN2_DIR_TEMP_RDY_SHIFT		1
+#define REG_FIFO_SHIFT				0
 #define REG_FIFO_WR_PTR				0x04
+#define REG_FIFO_PTR_MASK			GENMASK(4,0)
+#define REG_FIFO_CLEAR_PTR 			0x00
 #define REG_FIFO_OVF_COUNTER			0x05
 #define REG_FIFO_RD_PTR				0x06
 #define REG_FIFO_DATA_REG			0x07
 #define REG_FIFO_CONFIG				0x08
-#define REG_FIFO_CONFIG_SMP_4AVE		0x2
+#define REG_FIFO_CONFIG_SMP_4AVE		0x02
 #define REG_FIFO_CONFIG_SMP_AVE_SHIFT		5
-#define REG_FIFO_CONFIG_SMP_AVE_MASK		GENMASK(7,4)
+#define REG_FIFO_CONFIG_SMP_AVE_MASK		GENMASK(7,5)
 #define REG_FIFO_CONFIG_ROLLOVER_EN		BIT(4)
-#define REG_FIFO_CONFIG_FIFO_A_FULL		GENMASK(3,0)
+#define REG_FIFO_CONFIG_ROLLOVER_SHIFT		BIT(4)
+#define REG_FIFO_CONFIG_ROLLOVER_MASK		BIT(4)
+#define REG_FIFO_CONFIG_FIFO_A_FULL		0x06
+#define REG_FIFO_CONFIG_FIFO_A_FULL_MASK	GENMASK(3,0)
 #define REG_FIFO_CONFIG_FIFO_A_FULL_SHIFT	0
+#define REG_FIFO_CONFIG_MASKS \
+	(REG_FIFO_CONFIG_SMP_AVE_MASK | \
+	 REG_FIFO_CONFIG_ROLLOVER_MASK| \
+	 REG_FIFO_CONFIG_FIFO_A_FULL_MASK \
+	 )
 #define REG_MODE_CONFIG				0x09
+#define REG_MODE_CONFIG_SHDN_SHIFT		7
 #define REG_MODE_CONFIG_SHDN			BIT(7)
 #define REG_MODE_CONFIG_RESET			BIT(6)
+#define REG_MODE_CONFIG_RESET_SHIFT		6
 #define REG_MODE_MASK				GENMASK(2,0)
+#define REG_MODE_SHIFT				0
 #define MODE_HR					0x02
 #define MODE_SPO2				0x03
 #define MODE_MULTI				0x07
-#define REG_SPO2_CONFIG				0x0A
-#define REG_SPO2_CONFIG_ADC_RGE_4096		(0x1 << 5)
-#define REG_SPO2_CONFIG_SAMPLE_RATE		0x03
-#define REG_SPO2_CONFIG_SR_MASK			GENMASK(4,2)
-#define REG_SPO2_CONFIG_SR_SHIFT		2
-#define REG_SPO2_LED_PW				0x03
-#define REG_SPO2_LED_PW_SHIFT			0
+#define REG_SPO2_CONFIG 			0x0A
+#define REG_SPO2_ADC_SHIFT			5
+#define REG_SPO2_ADC_MASK 			GENMASK(6,5)
+#define REG_SPO2_SR_SHIFT 			2
+#define REG_SPO2_SR_MASK  			GENMASK(4,2)
+#define REG_SPO2_PW_SHIFT 			0
+#define REG_SPO2_PW_MASK  			GENMASK(1,0)
+#define REG_SPO2_CONFIG_MASK \
+ (REG_SPO2_ADC_MASK | REG_SPO2_SR_MASK | REG_SPO2_PW_MASK)
+#define SPO2_ADC_4096				1
+#define SPO2_SR_100HZ				3
+#define REG_MULTI_LED1_CONFIG			0x11
+#define REG_MULTI_LED2_CONFIG			0x12
+#define SPO2_PW_411US 				3
 #define REG_LED1_PA				0x0C	/* RED */
 #define REG_LED2_PA				0x0D	/* IR */
 #define REG_LED1_DEF_PA				0x1f
@@ -61,6 +90,7 @@
 #define REG_TEMP_CONFIG_EN			BIT(0)
 #define REG_REV_ID				0xFE
 #define REG_PART_ID				0xFF
+#define MAX30102_PART_NO			0x15
 
 
 #define MAX30102_INTENSITY_CHANNELS(_si,_mod) {\
@@ -123,9 +153,150 @@ static const struct iio_info max30102_iio_info = {
         .read_raw = max30102_read_raw,
 };
 
-int max30102_chip_init(struct max30102_data *md) {
+int max30102_chip_init(struct max30102_data *md)
+{
+	int ret ;
+       	unsigned  int reg;
+	
+	/* Reset device */
+	ret = regmap_update_bits(md->regmap, REG_MODE_CONFIG, REG_MODE_CONFIG_RESET,
+			REG_MODE_CONFIG_RESET << REG_MODE_CONFIG_RESET_SHIFT);
 
-	/* TODO chip initialization */
+	if (ret) {
+		dev_err(md->dev, "reset failed!\n");
+		return ret;
+	}
+
+	usleep_range(1000, 2000);
+
+	/* read part id and revision */
+	ret = regmap_read(md->regmap, REG_PART_ID, &reg);
+
+	if (ret) {
+		dev_err(md->dev, "part id read failed!\n");
+		return ret;
+	}
+
+
+	if (reg != MAX30102_PART_NO) {
+		dev_err(md->dev, "part id mismatch!\n");
+		return ret;
+	}
+
+	dev_dbg(md->dev, "max30102 part id %02x\n", reg);
+
+	ret = regmap_read(md->regmap, REG_REV_ID, &reg);
+
+	if (ret) {
+		dev_err(md->dev, "revision read failed\n");
+		return ret;
+	}
+
+	dev_dbg(md->dev, "max30102 revision %02x\n", reg);
+
+	/* put device in shutdown */
+	ret = regmap_update_bits(md->regmap, REG_MODE_CONFIG, REG_MODE_CONFIG_SHDN , 
+			REG_MODE_CONFIG_SHDN << REG_MODE_CONFIG_SHDN_SHIFT );
+
+	if (ret) {
+		dev_err(md->dev, "set mode shutdown failed!\n");
+		return ret;
+	}
+
+	/* set power amplitude to both leds */
+	ret = regmap_write(md->regmap, REG_LED1_PA, REG_LED1_DEF_PA);
+
+	if (ret) {
+		dev_err(md->dev, "set led1 PA failed!\n");
+		return ret;
+	}
+
+	ret = regmap_write(md->regmap, REG_LED2_PA, REG_LED2_DEF_PA);
+
+	if (ret) {
+		dev_err(md->dev, "set led2 PA failed!\n");
+		return ret;
+	}
+
+	/* FIFO configurations */
+	ret = regmap_write(md->regmap,REG_FIFO_CONFIG,(REG_FIFO_CONFIG_SMP_4AVE
+				<<REG_FIFO_CONFIG_SMP_AVE_SHIFT) |(
+				REG_FIFO_CONFIG_ROLLOVER_EN 
+				<< REG_FIFO_CONFIG_ROLLOVER_SHIFT) | (
+				REG_FIFO_CONFIG_FIFO_A_FULL <<
+				REG_FIFO_CONFIG_FIFO_A_FULL_SHIFT));
+	if (ret) {
+		dev_err(md->dev, "fifo configuration failed!\n");
+		return ret;
+	}
+
+	/* spo2 configurations */
+	ret = regmap_update_bits(md->regmap, REG_SPO2_CONFIG, REG_SPO2_CONFIG_MASK,
+		       (SPO2_ADC_4096 << REG_SPO2_ADC_SHIFT) |
+		       (SPO2_SR_100HZ << REG_SPO2_SR_SHIFT) |
+		       (SPO2_PW_411US << REG_SPO2_PW_SHIFT));
+	
+	if (ret) {
+		dev_err(md->dev, "spo2 configuration failed!\n");
+       		return ret;
+	}		
+
+	/*  mode configuration */
+	ret = regmap_update_bits(md->regmap, REG_MODE_CONFIG, REG_MODE_MASK,
+			MODE_SPO2 << REG_MODE_SHIFT);
+        if (ret) {
+		dev_err(md->dev, "set spo2 mode failed!\n");
+		return ret;
+	}
+
+	/* clear fifo data register */
+	ret = regmap_write(md->regmap, REG_FIFO_WR_PTR,0);
+
+        if (ret) {
+		dev_err(md->dev, "fifo clear ptr failed!!\n");
+		return ret;
+	}
+
+	ret = regmap_write(md->regmap, REG_FIFO_OVF_COUNTER,0);
+
+        if (ret) {
+		dev_err(md->dev, "fifo clear ptr failed!\n");
+		return ret;
+	}
+
+	ret = regmap_write(md->regmap, REG_FIFO_RD_PTR, 0);
+
+        if (ret) {
+		dev_err(md->dev, "fifo clear ptr failed!\n");
+		return ret;
+	}
+
+	/* interrupt configurations */
+	ret = regmap_write(md->regmap, REG_INT_ENABLE1,(REG_INT_ENABLE1_A_FULL
+			 << REG_INT_EN1_A_FULL_SHIFT) | (REG_INT_ENABLE1_PPG_RDY_EN
+			 << REG_INT_EN1_PPG_RDY_SHIFT)| (REG_INT_ENABLE1_ALC_OVF_EN
+			 << REG_INT_EN1_ALC_OVF_SHIFT));
+
+	if (ret) {
+		dev_err(md->dev, "interrupt1 enable failed!\n");
+		return ret;
+	}
+	ret = regmap_write(md->regmap, REG_INT_ENABLE2 , REG_INT_ENABLE2_DIE_TEMP_RDY_EN
+		       << REG_INT_EN2_DIR_TEMP_RDY_SHIFT);
+	
+	if (ret) { 
+		dev_err(md->dev, "interrupt2 enable failed!\n");
+		return ret;
+	}
+	
+	/* clear SHDN bit to zero */ 
+	ret = regmap_update_bits(md->regmap, REG_MODE_CONFIG, REG_MODE_CONFIG_SHDN,
+			0 << REG_MODE_CONFIG_SHDN_SHIFT);
+
+	if (ret) {
+		dev_err(md->dev, "shdn clear failed!");
+		return ret;
+	}
 
 	return 0;
 }
@@ -134,8 +305,8 @@ static int max30102_probe(struct i2c_client *client)
 {
 	struct max30102_data *md;
 	struct device *dev = &client->dev;
-	unsigned int reg;
 	int ret;
+
 	md = devm_kzalloc(dev,sizeof(md), GFP_KERNEL);
 
 	if (!md)
@@ -178,18 +349,10 @@ static int max30102_probe(struct i2c_client *client)
 	if(IS_ERR(md->regmap))
 		return  PTR_ERR(md->regmap);
 
-	/* check part ID */
-	reg = regmap_read(md->regmap,REG_PART_ID,&reg);
-
-	if (reg < 0)
-		return -ENODEV;
-	if (reg != REG_PART_ID)
-		return -ENODEV;
-
 	ret = max30102_chip_init(md);
 	
 	if (ret < 0) {
-		dev_err(dev, "max30102_chip_init() error\n");
+		dev_err(dev, "Initialization failed!\n");
 		return ret;
 	}
 

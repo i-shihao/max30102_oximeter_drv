@@ -39,3 +39,18 @@
 
 Note: Sensor pins IR and RED must be left untouched
 
+## Device Tree Example
+
+ Device tree node for max30102 driver
+```
+spi@0 {
+    max30102@57 {
+         compatible ="adi,max30102";
+         status =  "okay";
+         reg = <0x57>;
+         interrupt-gpios = <&gpio 17 0x01>;
+        vdd-supply = <&reg_3v3>;
+        vled-supply = <&reg_3v3>;
+     };
+};
+```

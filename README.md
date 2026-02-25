@@ -24,3 +24,18 @@
  - IIO inteface for data channels
  - Interrupt driven data sample handeling
  - Runtime power management
+
+## Hardware Connection
+
+### Pin Connections
+
+ | Sensor Pin | Connects to | Description |
+ |------------|-------------|-------------|
+ | VIN        | 3.3v        | Power supply|
+ | GND        | GND         | Ground      |
+ | SCL        | I2C-SCL     | Clock Line  |
+ | SDA        | I2C_SDA     | Data line   |
+ | INT        | GPIO-x      | Interupt    |
+
+Note: Sensor pins IR and RED must be left untouched
+

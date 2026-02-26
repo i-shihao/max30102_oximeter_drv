@@ -8,11 +8,16 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/of.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/kfifo_buf.h>
 #include <linux/iio/buffer.h>
+#include <linux/interrupt.h>
+#include <linux/workqueue.h>
+#include <linux/delay.h>
+
 #define REG_INT_STATUS1				0x00
 #define REG_INT_STATUS1_A_FULL			BIT(7)
 #define REG_INT_STATUS1_PPG_RDY			BIT(6)
@@ -20,6 +25,7 @@
 #define REG_INT_STATUS1_PWR_RDY			BIT(0)
 #define REG_INT_STATUS2				0x01
 #define REG_INT_STATUS2_DIE_TEMP_RDY		BIT(1)
+
 #define REG_INT_ENABLE1				0x02
 #define REG_INT_ENABLE1_A_FULL			BIT(7)
 #define REG_INT_EN1_A_FULL_SHIFT		6
@@ -34,6 +40,7 @@ REG_INT_ENABLE1_ALC_OVF_EN)
 #define REG_INT_ENABLE2				0x03
 #define REG_INT_ENABLE2_DIE_TEMP_RDY_EN		BIT(1)
 #define REG_INT_EN2_DIR_TEMP_RDY_SHIFT		1
+
 #define REG_FIFO_SHIFT				0
 #define REG_FIFO_WR_PTR				0x04
 #define REG_FIFO_PTR_MASK			GENMASK(4,0)
@@ -41,6 +48,7 @@ REG_INT_ENABLE1_ALC_OVF_EN)
 #define REG_FIFO_OVF_COUNTER			0x05
 #define REG_FIFO_RD_PTR				0x06
 #define REG_FIFO_DATA_REG			0x07
+
 #define REG_FIFO_CONFIG				0x08
 #define REG_FIFO_CONFIG_SMP_4AVE		0x02
 #define REG_FIFO_CONFIG_SMP_AVE_SHIFT		5
@@ -56,6 +64,7 @@ REG_INT_ENABLE1_ALC_OVF_EN)
 	 REG_FIFO_CONFIG_ROLLOVER_MASK| \
 	 REG_FIFO_CONFIG_FIFO_A_FULL_MASK \
 	 )
+
 #define REG_MODE_CONFIG				0x09
 #define REG_MODE_CONFIG_SHDN_SHIFT		7
 #define REG_MODE_CONFIG_SHDN			BIT(7)
@@ -63,9 +72,11 @@ REG_INT_ENABLE1_ALC_OVF_EN)
 #define REG_MODE_CONFIG_RESET_SHIFT		6
 #define REG_MODE_MASK				GENMASK(2,0)
 #define REG_MODE_SHIFT				0
+
 #define MODE_HR					0x02
 #define MODE_SPO2				0x03
 #define MODE_MULTI				0x07
+
 #define REG_SPO2_CONFIG 			0x0A
 #define REG_SPO2_ADC_SHIFT			5
 #define REG_SPO2_ADC_MASK 			GENMASK(6,5)
@@ -80,6 +91,7 @@ REG_INT_ENABLE1_ALC_OVF_EN)
 #define REG_MULTI_LED1_CONFIG			0x11
 #define REG_MULTI_LED2_CONFIG			0x12
 #define SPO2_PW_411US 				3
+
 #define REG_LED1_PA				0x0C	/* RED */
 #define REG_LED2_PA				0x0D	/* IR */
 #define REG_LED1_DEF_PA				0x1f
@@ -110,13 +122,13 @@ REG_INT_ENABLE1_ALC_OVF_EN)
 struct max30102_data {
 	struct regmap *regmap;
 	struct iio_dev *indio_dev;
-        struct work_struct wq;
-        struct delayed_work work;
+        struct work_struct work;
         struct gpio_desc *led_gpio;
         struct device *dev;
         bool device_state;
-        int value;
         int count;
+	u8 intstatus;
+	u8 intstatus1;
         int irq;
 
 };
@@ -152,6 +164,47 @@ static int max30102_read_raw(struct iio_dev *indio_dev, struct iio_chan_spec con
 static const struct iio_info max30102_iio_info = {
         .read_raw = max30102_read_raw,
 };
+
+static void max30102_workqueue(struct work_struct *work)
+{
+ 	struct max30102_data *md = container_of(work, struct max30102_data , work);
+        struct device *dev  = md->dev;
+
+	return;
+}
+
+
+static irqreturn_t max30102_irq_handler(int irq , void *dev_id)
+{
+	int ret;
+	unsigned val;
+
+	struct max30102_data *md = dev_id;
+
+ 	/* read both int status registers */
+
+	dev_info(md->dev, "interrupt occured!\n");
+	ret = regmap_read(md->regmap, REG_INT_STATUS1, &val);
+
+	if (ret) {
+		dev_err(md->dev, "regmap_read() error!");
+	}
+
+	md->intstatus = val;
+
+	ret = regmap_read(md->regmap,REG_INT_STATUS2, &val);
+
+	if (ret) {
+		dev_err(md->dev, "regmap_read() error!");
+	}
+
+	md->intstatus1 = val;
+
+	dev_info(md->dev, "scheduling workqueue");
+	schedule_work(&md->work);
+
+	return IRQ_HANDLED;
+}
 
 int max30102_chip_init(struct max30102_data *md)
 {
@@ -349,12 +402,25 @@ static int max30102_probe(struct i2c_client *client)
 	if(IS_ERR(md->regmap))
 		return  PTR_ERR(md->regmap);
 
+	/* chip initialization */
 	ret = max30102_chip_init(md);
 	
 	if (ret < 0) {
 		dev_err(dev, "Initialization failed!\n");
 		return ret;
 	}
+
+	/* interrupt configuration */
+	md->irq = client->irq;
+
+	ret = devm_request_irq(dev, md->irq, max30102_irq_handler, 0 , "max30102", md);
+
+	if (ret) {
+		dev_err(dev, "request_irq() error!");
+		return ret;
+	}
+
+	INIT_WORK(&md->work, max30102_workqueue);
 
 	pr_info("device ready\n");
 	return 0;

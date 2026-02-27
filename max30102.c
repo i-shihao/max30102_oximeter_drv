@@ -126,7 +126,8 @@ struct max30102_data {
         struct gpio_desc *led_gpio;
         struct device *dev;
         bool device_state;
-        int count;
+	u8 buffer[12];
+	__be32 pd[3];
 	u8 intstatus;
 	u8 intstatus1;
         int irq;
@@ -170,6 +171,11 @@ static void max30102_workqueue(struct work_struct *work)
  	struct max30102_data *md = container_of(work, struct max30102_data , work);
         struct device *dev  = md->dev;
 
+	if (md->intstatus & REG_INT_STATUS1_A_FULL) {
+	       dev_info(dev, "inturrpt A_FULL!");	
+	       
+	       /*TODO FIFO DATA register */
+	       
 	return;
 }
 

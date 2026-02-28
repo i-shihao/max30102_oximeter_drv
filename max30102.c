@@ -17,6 +17,7 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 #include <linux/delay.h>
+#include <linux/interrupt.h>
 
 #define REG_INT_STATUS1				0x00
 #define REG_INT_STATUS1_A_FULL			BIT(7)
@@ -129,7 +130,8 @@ struct max30102_data {
         bool device_state;
 	u8 buffer[12];
 	u8 bak_buf[192];
-	__be32 pd[3];
+	u32 assembled_data[2];
+	__be32 iio_frame[2];
 	u8 intstatus;
 	u8 intstatus1;
         int irq;
@@ -168,9 +170,24 @@ static const struct iio_info max30102_iio_info = {
         .read_raw = max30102_read_raw,
 };
 
+int process_max30102_data(struct max30102_data *md)
+{
+	md->assembled_data[0] = (((u32)md->buffer[0] << 16) | ((u32)md->buffer[1] << 8)  | (u32)md->buffer[2]) & 0x3FFFF;
+
+	md->assembled_data[1] = (((u32)md->buffer[3] << 16) | ((u32)md->buffer[4] << 8)  | (u32)md->buffer[5]) & 0x3FFFF;
+
+	/* store assembled data to iio_frame */
+	md->iio_frame[0] = cpu_to_be32(md->assembled_data[0] << 8);
+	md->iio_frame[1] = cpu_to_be32(md->assembled_data[1] << 8);
+
+	iio_push_to_buffers_with_timestamp(md->indio_dev, md->iio_frame, iio_get_time_ns(md->indio_dev));
+	return 0;
+}
+
 int cal_unread_bytes(struct max30102_data *md)
 {
-	unsigned int r_value, w_value,
+	unsigned int r_value, w_value;
+	
 	int ret, samples;
 
 	ret = regmap_read(md->regmap, REG_FIFO_WR_PTR,&w_value);
@@ -198,6 +215,7 @@ static void max30102_workqueue(struct work_struct *work)
  	struct max30102_data *md = container_of(work, struct max30102_data , work);
         struct device *dev  = md->dev;
 
+	int ret;
 	/* calculate unread samples */
 	int unread_bytes = cal_unread_bytes(md);
 
@@ -212,14 +230,15 @@ static void max30102_workqueue(struct work_struct *work)
 	       dev_info(dev, "inturrpt A_FULL!");
 
 	       /*TODO FIFO DATA register */
-	ret = int regmap_bulk_read(md->regmap, REG_FIFO_DATA_REG, md->bak_buf,
+		ret = regmap_bulk_read(md->regmap, REG_FIFO_DATA_REG, md->bak_buf,
 				   unread_bytes);
-	if (ret) {
-		dev_err(dev, "regmap_bulk_read() error");
-		return;
-	}
+		if (ret) {
+			dev_err(dev, "regmap_bulk_read() error");
+			return;
+			}
+		}
 
-	if (md->intstaus & REG_INT_STATUS1_PPG_RDY) {
+	if (md->intstatus & REG_INT_STATUS1_PPG_RDY) {
 		dev_info(dev, "inturrpt PPG_RDY!");
 
 		ret = regmap_bulk_read(md->regmap, REG_FIFO_DATA_REG, md->buffer,
@@ -230,7 +249,15 @@ static void max30102_workqueue(struct work_struct *work)
 		}
 	}
 
+	int reg = process_max30102_data(md);
+
+	if (ret) {
+		dev_err(md->dev,"process_max30102_data() error");
+		return;
+	}
+
 	return;
+	
 }
 
 

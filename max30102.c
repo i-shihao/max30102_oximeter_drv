@@ -103,7 +103,8 @@ REG_INT_ENABLE1_ALC_OVF_EN)
 #define REG_REV_ID				0xFE
 #define REG_PART_ID				0xFF
 #define MAX30102_PART_NO			0x15
-
+#define FIFO_MASK				0x1F
+#define BYTES_PER_SAMPLE			6
 
 #define MAX30102_INTENSITY_CHANNELS(_si,_mod) {\
 	.type = IIO_INTENSITY,\
@@ -127,6 +128,7 @@ struct max30102_data {
         struct device *dev;
         bool device_state;
 	u8 buffer[12];
+	u8 bak_buf[192];
 	__be32 pd[3];
 	u8 intstatus;
 	u8 intstatus1;
@@ -166,16 +168,68 @@ static const struct iio_info max30102_iio_info = {
         .read_raw = max30102_read_raw,
 };
 
+int cal_unread_bytes(struct max30102_data *md)
+{
+	unsigned int r_value, w_value,
+	int ret, samples;
+
+	ret = regmap_read(md->regmap, REG_FIFO_WR_PTR,&w_value);
+
+	if  (ret) {
+		dev_err(md->dev, "remap_read() error");
+		return ret;
+	}
+
+	ret = regmap_read(md->regmap, REG_FIFO_RD_PTR, &r_value);
+
+	if (ret) {
+		dev_err(md->dev, "regmap_read() error");
+		return ret;
+	}
+
+	w_value &= FIFO_MASK;
+        r_value &= FIFO_MASK;
+
+	samples = (w_value - r_value) &  FIFO_MASK;;
+	return  samples * BYTES_PER_SAMPLE;
+}
 static void max30102_workqueue(struct work_struct *work)
 {
  	struct max30102_data *md = container_of(work, struct max30102_data , work);
         struct device *dev  = md->dev;
 
+	/* calculate unread samples */
+	int unread_bytes = cal_unread_bytes(md);
+
+	if (unread_bytes < 0) {
+		dev_err(md->dev, "cal_unread_bytes() error");
+		return;
+	}
+
+	dev_info(md->dev, "unread_bytes :%d\n",unread_bytes);
+
 	if (md->intstatus & REG_INT_STATUS1_A_FULL) {
-	       dev_info(dev, "inturrpt A_FULL!");	
-	       
+	       dev_info(dev, "inturrpt A_FULL!");
+
 	       /*TODO FIFO DATA register */
-	       
+	ret = int regmap_bulk_read(md->regmap, REG_FIFO_DATA_REG, md->bak_buf,
+				   unread_bytes);
+	if (ret) {
+		dev_err(dev, "regmap_bulk_read() error");
+		return;
+	}
+
+	if (md->intstaus & REG_INT_STATUS1_PPG_RDY) {
+		dev_info(dev, "inturrpt PPG_RDY!");
+
+		ret = regmap_bulk_read(md->regmap, REG_FIFO_DATA_REG, md->buffer,
+				unread_bytes);
+		if (ret) {
+			dev_err(dev, "regmap_bulk_read() error!");
+			return;
+		}
+	}
+
 	return;
 }
 

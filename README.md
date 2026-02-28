@@ -56,6 +56,13 @@ spi@0 {
 ```
 
 ## Build and Install
+
+### Requirements
+ - Linux kernel: 6.18
+ - Architecture: ARM64
+ - Board: Raspberry Pi 4 Model B
+ - Compiler: GCC (15.2.1)
+
 ### Build
     make
 ### Insert driver

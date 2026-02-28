@@ -1,6 +1,6 @@
 # Max30102 spo2 pulse Oximetry sensor driver
 
-## Table on Contents
+## Table of Contents
  - [Overview](#overview)
  - [Features](#features)
  - [Hardware Connections](#hardware-connections)

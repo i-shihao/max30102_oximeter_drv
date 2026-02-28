@@ -65,3 +65,8 @@ spi@0 {
 ### Remove
     rmmod max30102
 
+## License
+
+ This driver is license under the GNU General Public License version v2.0 GPL-2.0. For more information
+ refer to License file.
+

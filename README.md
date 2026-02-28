@@ -54,3 +54,14 @@ spi@0 {
      };
 };
 ```
+
+## Build and Install
+### Build
+    make
+### Insert driver
+    insmod max30102.ko
+### Verify
+    dmesg | grep max30102
+### Remove
+    rmmod max30102
+

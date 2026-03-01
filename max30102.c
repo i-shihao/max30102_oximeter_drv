@@ -28,16 +28,13 @@
 #define REG_INT_STATUS2_DIE_TEMP_RDY		BIT(1)
 
 #define REG_INT_ENABLE1				0x02
+#define REG_INT_ENABLE1_MASK			GENMASK(7,5)
 #define REG_INT_ENABLE1_A_FULL			BIT(7)
-#define REG_INT_EN1_A_FULL_SHIFT		6
+#define REG_INT_EN1_A_FULL_SHIFT		7
 #define REG_INT_ENABLE1_PPG_RDY_EN		BIT(6)
-#define REG_INT_EN1_PPG_RDY_SHIFT		5
+#define REG_INT_EN1_PPG_RDY_SHIFT		6
 #define REG_INT_ENABLE1_ALC_OVF_EN		BIT(5)
-#define REG_INT_EN1_ALC_OVF_SHIFT		4
-#define REG_INT_ENABLE1_MASKS \
-(REG_INT_ENABLE1_A_FULL \
-| REG_INT_ENABLE1_PPG_RDY_EN  \
-REG_INT_ENABLE1_ALC_OVF_EN)
+#define REG_INT_EN1_ALC_OVF_SHIFT		5
 #define REG_INT_ENABLE2				0x03
 #define REG_INT_ENABLE2_DIE_TEMP_RDY_EN		BIT(1)
 #define REG_INT_EN2_DIR_TEMP_RDY_SHIFT		1
@@ -210,6 +207,93 @@ int cal_unread_bytes(struct max30102_data *md)
 	samples = (w_value - r_value) &  FIFO_MASK;;
 	return  samples * BYTES_PER_SAMPLE;
 }
+
+static int max30102_disable_ints(struct max30102_data *md)
+{
+	int ret;
+	
+	ret = regmap_update_bits(md->regmap, REG_INT_ENABLE1, REG_INT_ENABLE1_MASK,
+				 0);
+
+	if (ret) {
+		dev_err(md->dev, "max30102_disable_ints() error");
+		return ret;
+	}
+
+	ret = regmap_update_bits(md->regmap, REG_INT_ENABLE2,
+				 REG_INT_ENABLE2_DIE_TEMP_RDY_EN,
+				 0 );
+	if (ret) {
+		dev_err(md->dev, "max30102_disable_ints() error");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int max30102_enable_ints(struct max30102_data *md)
+{
+	int ret;
+	
+	ret = regmap_update_bits(md->regmap, REG_INT_ENABLE1, REG_INT_ENABLE1_MASK,
+				 (REG_INT_ENABLE1_A_FULL ) |
+				 (REG_INT_ENABLE1_PPG_RDY_EN) |
+				 (REG_INT_ENABLE1_ALC_OVF_EN));
+	if (ret) {
+		dev_err(md->dev, "max30102_enable_ints() error");
+		return ret;
+	}
+
+	ret = regmap_update_bits(md->regmap, REG_INT_ENABLE2,
+				REG_INT_ENABLE2_DIE_TEMP_RDY_EN,
+				REG_INT_ENABLE2_DIE_TEMP_RDY_EN);
+	if (ret) {
+		dev_err(md->dev, "max30102_enable_ints() error");
+		return ret;
+	}
+	return 0;
+}
+static int max30102_clearfifo(struct max30102_data *md)
+{	
+	int ret = regmap_write(md->regmap, REG_FIFO_WR_PTR,0);
+
+        if (ret) {
+		dev_err(md->dev, "fifo clear ptr failed!!\n");
+		return ret;
+	}
+
+	ret = regmap_write(md->regmap, REG_FIFO_OVF_COUNTER,0);
+
+        if (ret) {
+		dev_err(md->dev, "fifo clear ptr failed!\n");
+		return ret;
+	}
+
+	ret = regmap_write(md->regmap, REG_FIFO_RD_PTR, 0);
+
+        if (ret) {
+		dev_err(md->dev, "fifo clear ptr failed!\n");
+		return ret;
+	}
+	
+	return 0;
+}
+
+static int max30102_set_powermode(struct max30102_data *md)
+{
+	int ret;
+
+	/* enable power saving mode */
+	ret = regmap_update_bits(md->regmap, REG_MODE_CONFIG, REG_MODE_CONFIG_SHDN,
+		       		 REG_MODE_CONFIG_SHDN);
+
+	if (ret) {
+		dev_err(md->dev, "shutdown operation failed!");
+		return ret;
+	}
+	return 0;
+}
+
 static void max30102_workqueue(struct work_struct *work)
 {
  	struct max30102_data *md = container_of(work, struct max30102_data , work);
@@ -259,7 +343,6 @@ static void max30102_workqueue(struct work_struct *work)
 	return;
 	
 }
-
 
 static irqreturn_t max30102_irq_handler(int irq , void *dev_id)
 {
@@ -389,43 +472,17 @@ int max30102_chip_init(struct max30102_data *md)
 		return ret;
 	}
 
-	/* clear fifo data register */
-	ret = regmap_write(md->regmap, REG_FIFO_WR_PTR,0);
+	ret =  max30102_clearfifo(md);
 
         if (ret) {
-		dev_err(md->dev, "fifo clear ptr failed!!\n");
+		dev_err(md->dev, "max30102_clearfifo failed!");
 		return ret;
 	}
 
-	ret = regmap_write(md->regmap, REG_FIFO_OVF_COUNTER,0);
-
-        if (ret) {
-		dev_err(md->dev, "fifo clear ptr failed!\n");
-		return ret;
-	}
-
-	ret = regmap_write(md->regmap, REG_FIFO_RD_PTR, 0);
-
-        if (ret) {
-		dev_err(md->dev, "fifo clear ptr failed!\n");
-		return ret;
-	}
-
-	/* interrupt configurations */
-	ret = regmap_write(md->regmap, REG_INT_ENABLE1,(REG_INT_ENABLE1_A_FULL
-			 << REG_INT_EN1_A_FULL_SHIFT) | (REG_INT_ENABLE1_PPG_RDY_EN
-			 << REG_INT_EN1_PPG_RDY_SHIFT)| (REG_INT_ENABLE1_ALC_OVF_EN
-			 << REG_INT_EN1_ALC_OVF_SHIFT));
-
-	if (ret) {
-		dev_err(md->dev, "interrupt1 enable failed!\n");
-		return ret;
-	}
-	ret = regmap_write(md->regmap, REG_INT_ENABLE2 , REG_INT_ENABLE2_DIE_TEMP_RDY_EN
-		       << REG_INT_EN2_DIR_TEMP_RDY_SHIFT);
+	ret = max30102_enable_ints(md);
 	
-	if (ret) { 
-		dev_err(md->dev, "interrupt2 enable failed!\n");
+	if (ret) {
+		dev_err(md->dev, "max30102_enable_ints() error!");
 		return ret;
 	}
 	
@@ -483,8 +540,11 @@ static int max30102_probe(struct i2c_client *client)
 
         dev_info(dev, "iio registered\n");
 
+	/* set private data */
+	i2c_set_clientdata(client, md);
+	dev_set_drvdata(&client->dev,md);
+
 	/* regmap configurations */
-	
 	md->regmap = devm_regmap_init_i2c(client, &max30102_regmap_config);
 	if(IS_ERR(md->regmap))
 		return  PTR_ERR(md->regmap);
@@ -516,15 +576,138 @@ static int max30102_probe(struct i2c_client *client)
 static void max30102_remove(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
-	
+	struct max30102_data *md = i2c_get_clientdata(client);
+
+	if (!md) {
+		dev_err(dev, "i2c_get_clientdata() error");
+		return;
+	}
+	int ret;
+
+	/* disable interrupts */
+	ret = max30102_disable_ints(md);
+
+	if (ret) {
+		dev_err(md->dev, "max30102_disable_ints() error!");
+		return ;
+	}
+
+	ret = max30102_set_powermode(md);
+	if (ret) {
+		dev_err(md->dev, "max30102_set_powermode() error");
+		return;
+	}
+
+	ret = max30102_clearfifo(md);
+
+        if (ret) {
+		dev_err(md->dev, "max30102_clearfifo() error!");
+		return;
+	}
+
 	dev_info(dev, "device removed\n");
 	return;
 }
 
 static void max30102_shutdown(struct i2c_client *client)
 {
+	int ret;
+	unsigned int value;
+	struct max30102_data *md = i2c_get_clientdata(client);
+
+	ret = regmap_read(md->regmap, REG_INT_ENABLE1, &value);
+
+	if (ret) {
+		dev_err(md->dev, "regmap_read() error");
+		return;
+	}
+
+	if (value & ( REG_INT_ENABLE1_A_FULL | REG_INT_ENABLE1_ALC_OVF_EN | 
+				REG_INT_ENABLE1_PPG_RDY_EN)) {
+		
+		ret = max30102_disable_ints(md);
+		if (ret) {
+			dev_err(md->dev, "max30102_disable_ints() error");
+			return;
+		}
+	}
+
+	ret = max30102_set_powermode(md);
+
+	if (ret) {
+		dev_err(md->dev, "max30102_set_powermode() error");
+		return;
+	}
+
 	pr_info("Shutting down!\n");
 	return;
+}
+
+static int max30102_suspend(struct device *dev)
+{
+	struct max30102_data *md = dev_get_drvdata(dev);
+
+	if (!md) {
+		pr_info("dev_get_drvdata() error!");
+		return -ENODEV;
+	}
+
+	int ret = max30102_disable_ints(md);
+
+	if (ret) {
+		dev_err(dev, "max30102_disable_ints() error");
+		return ret;
+	}
+
+	ret = max30102_set_powermode(md);
+
+	if (ret) {
+		dev_err(dev, "max30102_set_powermode() error");
+		return ret;
+	}
+
+	ret = max30102_clearfifo(md);
+
+	if (ret) {
+		dev_err(dev, "max30102_clearfifo() error");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int max30102_resume(struct device *dev)
+{
+	struct max30102_data *md = dev_get_drvdata(dev);
+
+	if (!md) {
+		pr_info("dev_get_drvdata() error!");
+		return -ENODEV;
+	}
+
+	int ret = regmap_update_bits(md->regmap, REG_MODE_CONFIG, REG_MODE_CONFIG_SHDN
+				     ,REG_MODE_CONFIG);
+
+	if (ret) {
+		dev_err(dev, "regmap_update_bits() error");
+		return ret;
+	}
+
+	ret = max30102_clearfifo(md);
+
+	if (ret) {
+		dev_err(dev, "max30102_clearfifo() error");
+		return ret;
+	}
+
+	ret = max30102_enable_ints(md);
+	
+	if (ret) {
+		dev_err(dev, "max30102_enable_ints() error");
+		return ret;
+	}
+
+	return 0;
 }
 
 static const struct of_device_id max30102_of_match[] = {
@@ -540,10 +723,15 @@ static const struct i2c_device_id max30102_idtable[] = {
 
 MODULE_DEVICE_TABLE(i2c, max30102_idtable);
 
+static const struct dev_pm_ops max30102_pm_ops = {
+    .suspend = max30102_suspend,
+    .resume  = max30102_resume,
+};
+
 static struct i2c_driver max30102_driver = {
 	.driver = {
 		.name = "max30102",
-		.pm = NULL,
+		.pm = &max30102_pm_ops,
 		.of_match_table = max30102_of_match,
 	},
 	.id_table = max30102_idtable ,

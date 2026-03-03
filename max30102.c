@@ -4,7 +4,6 @@
  * Max30102 SPO2 oximetry driver 
  * Copyright (C) 2026 Shi Hao <i.shihao.999@gmail.com>
 */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -303,8 +302,13 @@ static void max30102_workqueue(struct work_struct *work)
  	struct max30102_data *md = container_of(work, struct max30102_data,
 		       				work);
         struct device *dev  = md->dev;
-
+	
 	int ret;
+
+	if (!md && !dev) {
+		pr_info("container_of() error");
+		return;
+	}
 
 	int unread_bytes = cal_unread_bytes(md);
 
@@ -337,7 +341,13 @@ static void max30102_workqueue(struct work_struct *work)
 		}
 	}
 
-	int reg = process_max30102_data(md);
+	if (md->intstatus & REG_INT_ENABLE1_ALC_OVF_EN) {
+		dev_info(md->dev, "interrupt ALC_OVF");
+
+		/* TODO stop alc ovf */
+	}
+
+	ret = process_max30102_data(md);
 
 	if (ret) {
 		dev_err(md->dev,"process_max30102_data() error");
@@ -354,10 +364,10 @@ static irqreturn_t max30102_irq_handler(int irq , void *dev_id)
 
 	struct max30102_data *md = dev_id;
 
-	if (!md) {
+	if (!md)
 		return IRQ_NONE;	
- 	/* read both int status registers */
 
+ 	/* read both int status registers */
 	dev_info(md->dev, "interrupt occured!\n");
 	ret = regmap_read(md->regmap, REG_INT_STATUS1, &val);
 
